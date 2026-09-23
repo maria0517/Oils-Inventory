@@ -1,4 +1,4 @@
-const API_URL = 'http://192.168.1.36:3000/oils';
+const API_URL = 'https://oils-inventory.onrender.com/oils';
 
 export interface Oil {
   id: number;
