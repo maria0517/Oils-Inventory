@@ -1,4 +1,5 @@
-const API_URL = 'https://oils-inventory.onrender.com/oils';
+const BASE_URL = 'https://oils-inventory.onrender.com';
+const API_URL = `${BASE_URL}/oils`;
 
 export interface Oil {
   id: number;
@@ -6,71 +7,119 @@ export interface Oil {
   nameEn: string;
   smallBottles: number;
   largeBottles: number;
+  description?: string;
+  userId?: number;
 }
 
-export interface CreateOilPayload {
-  nameRo: string;
-  nameEn: string;
-  smallBottles: number;
-  largeBottles: number;
+function getAuthHeaders() {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }
 
-// 1. Preluare toate uleiurile
+export async function loginUser(email: string, pass: string): Promise<string> {
+  const res = await fetch(`${BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, pass }),
+  });
+
+  if (!res.ok) throw new Error('Email sau parolă incorectă');
+  const data = await res.json();
+  return data.access_token;
+}
+
+export async function registerUser(email: string, pass: string): Promise<string> {
+  const res = await fetch(`${BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, pass }),
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || 'Eroare la crearea contului');
+  }
+
+  const data = await res.json();
+  return data.access_token;
+}
+
 export async function getOils(): Promise<Oil[]> {
-  const res = await fetch(API_URL);
-  if (!res.ok) throw new Error('Eroare la preluarea uleiurilor');
+  const res = await fetch(API_URL, {
+    headers: getAuthHeaders(),
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    window.location.reload();
+    throw new Error('Sesiune expirată');
+  }
+
+  if (!res.ok) throw new Error('Eroare la încărcarea uleiurilor');
   return res.json();
 }
 
-// 2. Modificare stoc (+ / -)
-export async function updateOilStock(
+export async function updateBottleStock(
   id: number,
-  data: { smallBottles?: number; largeBottles?: number }
+  field: 'smallBottles' | 'largeBottles',
+  newCount: number
 ): Promise<Oil> {
   const res = await fetch(`${API_URL}/${id}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ [field]: Math.max(0, newCount) }),
   });
 
   if (!res.ok) throw new Error('Eroare la actualizarea stocului');
   return res.json();
 }
 
-// 3. Adăugare ulei nou
-export async function createOil(data: CreateOilPayload): Promise<Oil> {
+export async function createOil(oil: {
+  nameRo: string;
+  nameEn: string;
+  smallBottles: number;
+  largeBottles: number;
+  description?: string;
+}): Promise<Oil> {
   const res = await fetch(API_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
+    headers: getAuthHeaders(),
+    body: JSON.stringify(oil),
   });
 
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => null);
-    if (
-      res.status === 409 ||
-      errorData?.message?.includes?.('already exists') ||
-      errorData?.message?.includes?.('Unique constraint')
-    ) {
-      throw new Error('Un ulei cu acest nume (în română sau engleză) există deja în inventar!');
-    }
-    throw new Error(errorData?.message || 'Eroare la crearea uleiului.');
-  }
-
+  if (!res.ok) throw new Error('Eroare la adăugarea uleiului');
   return res.json();
 }
 
-// 4. Ștergere ulei
 export async function deleteOil(id: number): Promise<void> {
   const res = await fetch(`${API_URL}/${id}`, {
     method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+
+  if (!res.ok) throw new Error('Eroare la ștergerea uleiului');
+}
+
+export async function uploadOilsCsv(file: File): Promise<{ count: number; message: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_URL}/import-csv`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
   });
 
   if (!res.ok) {
-    throw new Error('Eroare la ștergerea uleiului din baza de date.');
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || 'Eroare la importarea fișierului CSV');
   }
+
+  return res.json();
 }

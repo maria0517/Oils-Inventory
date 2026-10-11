@@ -13,10 +13,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  oils      Oil[]
+}
+
 model Oil {
-  id           Int    @id @default(autoincrement())
-  nameRo       String @unique
-  nameEn       String @unique
-  smallBottles Int    @default(0)
-  largeBottles Int    @default(0)
+  id           Int      @id @default(autoincrement())
+  nameRo       String
+  nameEn       String
+  smallBottles Int      @default(0)
+  largeBottles Int      @default(0)
+  description  String?
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([nameEn, userId])
 }
